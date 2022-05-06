@@ -1,8 +1,10 @@
+use std::collections::HashMap;
 use std::fmt;
-use std::io::{self, stdout, Write};
+use std::io::{self, Write};
 
 struct Board {
     word: String,
+    word_count: HashMap<char, i32>,
     rows: [[Cell; 5]; 6],
 }
 
@@ -20,60 +22,77 @@ impl Cell {
     }
 }
 
+fn count_chars(a: &str) -> HashMap<char, i32> {
+    let mut count: HashMap<char, i32> = HashMap::new(); // {'a': 0}
+    for letter in a.chars() {
+        let letter_count = count.entry(letter).or_insert(0);
+        *letter_count += 1;
+    }
+    count
+}
+
 impl Board {
-    pub fn new() -> Self {
+    // self, &self, &mut self
+    pub fn new(word: String) -> Self {
+        let word_count = count_chars(&word);
         Board {
-            word: "rusty".to_string(),
+            word: word,
+            word_count: word_count,
             rows: [[Cell::new(); 5]; 6],
         }
     }
-    pub fn guess_cell(&self, guess_idx: usize, c: char) -> Cell {
-        let mut existing = false;
-        for (word_idx, letter) in self.word.chars().enumerate() {
-            if guess_idx == word_idx && c == letter {
-                return Cell::Green(c);
-            } else if guess_idx != word_idx && c == letter {
-                return Cell::Yellow(c);
-            }
-            if c == letter {
-                existing = true;
+
+    fn mark_green(&mut self, index: usize, guess: &str) {
+        let chars = guess.chars();
+        for (guess_idx, c) in chars.enumerate() {
+            for (word_idx, letter) in self.word.chars().enumerate() {
+                let count = self.word_count.get_mut(&letter).unwrap();
+                if guess_idx == word_idx && c == letter {
+                    *count -= 1;
+                    self.rows[index][guess_idx] = Cell::Green(letter);
+                }
             }
         }
-        if !existing {
-            return Cell::Gray(c);
-        }
-        return Cell::Empty;
     }
+
+    fn mark_yellow(&mut self, index: usize, guess: &str) {
+        let chars = guess.chars();
+        for (guess_idx, c) in chars.enumerate() {
+            for (word_idx, letter) in self.word.chars().enumerate() {
+                let count = self.word_count.get_mut(&letter).unwrap();
+                if *count > 0 && guess_idx != word_idx && c == letter {
+                    *count -= 1;
+                    self.rows[index][guess_idx] = Cell::Yellow(letter);
+                }
+            }
+        }
+    }
+
+    fn mark_gray(&mut self, index: usize, guess: &str) {
+        let chars = guess.chars();
+        for (guess_idx, c) in chars.enumerate() {
+            let cell = self.rows[index][guess_idx];
+            if cell == Cell::Empty {
+                self.rows[index][guess_idx] = Cell::Gray(c);
+            }
+        }
+    }
+
     // self, &self, mut self, &mut self
     pub fn guess(&mut self, guess: &str) {
-        // ['-', '-', '-', '-', '-']
-        // ['-', '-', '-', '-', '-']
-        // ['-', '-', '-', '-', '-']
-        // ['-', '-', '-', '-', '-']
-        // ['-', '-', '-', '-', '-']
-        // ['-', '-', '-', '-', '-']
         let index = self
             .rows
             .iter()
             .position(|&r| r[0] == Cell::Empty)
             .expect("You lose!");
-        // ['r', 'o', 'u', 't', 'e']
-        // ['-', '-', '-', '-', '-']
-        // ['-', '-', '-', '-', '-']
-        // ['-', '-', '-', '-', '-']
-        // ['-', '-', '-', '-', '-']
-        // ['-', '-', '-', '-', '-']
         let guess = guess.trim();
         if guess.len() > 5 {
             panic!("can't guess more than 5")
         }
-        // atlye
-        let chars = guess.chars();
-        for (guess_idx, c) in chars.enumerate() {
-            println!("{} {} {}", guess_idx, c, c as u32);
-            let cell = self.guess_cell(guess_idx, c);
-            self.rows[index][guess_idx] = cell;
-        }
+        self.word_count = count_chars(&self.word);
+        self.mark_green(index, guess);
+        self.mark_yellow(index, guess);
+        self.mark_gray(index, guess);
     }
 }
 
@@ -90,7 +109,7 @@ impl fmt::Debug for Board {
 }
 
 fn main() {
-    let mut board = Board::new();
+    let mut board = Board::new("rusty".to_string());
     loop {
         let mut input = String::new();
         print!("Make a guess: ");
@@ -101,5 +120,118 @@ fn main() {
 
         board.guess(&input);
         println!("{:?}", board);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Board;
+    use crate::Cell;
+
+    #[test]
+    fn green() {
+        let mut board = Board::new("rusty".to_string());
+        board.guess("rusty");
+        assert_eq!(
+            board.rows[0],
+            [
+                Cell::Green('r'),
+                Cell::Green('u'),
+                Cell::Green('s'),
+                Cell::Green('t'),
+                Cell::Green('y')
+            ]
+        );
+    }
+
+    #[test]
+    fn yellow() {
+        let mut board = Board::new("rusty".to_string());
+        board.guess("rutsy");
+        assert_eq!(
+            board.rows[0],
+            [
+                Cell::Green('r'),
+                Cell::Green('u'),
+                Cell::Yellow('t'),
+                Cell::Yellow('s'),
+                Cell::Green('y')
+            ]
+        );
+    }
+
+    #[test]
+    fn gray() {
+        let mut board = Board::new("rusty".to_string());
+        board.guess("abcde");
+        assert_eq!(
+            board.rows[0],
+            [
+                Cell::Gray('a'),
+                Cell::Gray('b'),
+                Cell::Gray('c'),
+                Cell::Gray('d'),
+                Cell::Gray('e')
+            ]
+        );
+    }
+
+    #[test]
+    fn already_used_green() {
+        let mut board = Board::new("rusty".to_string());
+        board.guess("ruuty");
+        assert_eq!(
+            board.rows[0],
+            [
+                Cell::Green('r'),
+                Cell::Green('u'),
+                Cell::Gray('u'),
+                Cell::Green('t'),
+                Cell::Green('y')
+            ]
+        );
+    }
+
+    #[test]
+    fn already_used_green_first() {
+        let mut board = Board::new("rusty".to_string());
+        board.guess("uusty");
+        assert_eq!(
+            board.rows[0],
+            [
+                Cell::Gray('u'),
+                Cell::Green('u'),
+                Cell::Green('s'),
+                Cell::Green('t'),
+                Cell::Green('y')
+            ]
+        );
+    }
+
+    #[test]
+    fn guess_the_same_thing() {
+        let mut board = Board::new("rusty".to_string());
+        board.guess("rutsy");
+        board.guess("rutsy");
+        assert_eq!(
+            board.rows[0],
+            [
+                Cell::Green('r'),
+                Cell::Green('u'),
+                Cell::Yellow('t'),
+                Cell::Yellow('s'),
+                Cell::Green('y')
+            ]
+        );
+        assert_eq!(
+            board.rows[1],
+            [
+                Cell::Green('r'),
+                Cell::Green('u'),
+                Cell::Yellow('t'),
+                Cell::Yellow('s'),
+                Cell::Green('y')
+            ]
+        );
     }
 }
