@@ -1,11 +1,25 @@
+mod dictionary;
+mod utils;
+
 use std::collections::HashMap;
 use std::fmt;
 use std::io::{self, Write};
+
+use dictionary::Dictionary;
+
+use crossterm::{
+    cursor,
+    event::{self, Event, KeyCode, KeyEvent},
+    execute, queue, style,
+    terminal::{self, ClearType},
+    Command, Result,
+};
 
 struct Board {
     word: String,
     word_count: HashMap<char, i32>,
     rows: [[Cell; 5]; 6],
+    dictionary: dictionary::Dictionary,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -39,6 +53,7 @@ impl Board {
             word: word,
             word_count: word_count,
             rows: [[Cell::new(); 5]; 6],
+            dictionary: Dictionary::new("./data/dictionary.txt"),
         }
     }
 
@@ -118,8 +133,19 @@ fn main() {
             .read_line(&mut input)
             .expect("failed to read guess");
 
-        board.guess(&input);
-        println!("{:?}", board);
+        if !board.dictionary.is_a_word(&input) {
+            println!("{} is not in the dictionary!", &input.trim());
+        } else {
+            board.guess(&input);
+            terminal::enable_raw_mode(); // check for error
+            queue!(
+                io::stdout(),
+                style::ResetColor,
+                terminal::Clear(ClearType::All),
+                cursor::Hide,
+                cursor::MoveTo(1, 1)
+            );
+        }
     }
 }
 
