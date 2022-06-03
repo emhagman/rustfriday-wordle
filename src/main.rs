@@ -11,6 +11,7 @@ use crossterm::{
     cursor,
     event::{self, Event, KeyCode, KeyEvent},
     execute, queue, style,
+    style::Color,
     terminal::{self, ClearType},
     Command, Result,
 };
@@ -109,6 +110,67 @@ impl Board {
         self.mark_yellow(index, guess);
         self.mark_gray(index, guess);
     }
+
+    pub fn print(&self) {
+        terminal::enable_raw_mode(); // check for error
+        queue!(
+            io::stdout(),
+            style::ResetColor,
+            terminal::Clear(ClearType::All),
+            cursor::Hide,
+            cursor::MoveTo(0, 0)
+        );
+
+        // INSERT CODE HERE
+        for (idx, r) in self.rows.iter().enumerate() {
+            queue!(
+                io::stdout(),
+                style::ResetColor,
+                cursor::Hide,
+                cursor::MoveTo(0, idx.try_into().unwrap())
+            );
+            for c in r {
+                match c {
+                    Cell::Green(value) => {
+                        queue!(
+                            io::stdout(),
+                            style::SetBackgroundColor(Color::Green),
+                            style::SetForegroundColor(Color::Black),
+                            style::Print(format!("  {}  ", value))
+                        );
+                    }
+                    Cell::Yellow(value) => {
+                        queue!(
+                            io::stdout(),
+                            style::SetBackgroundColor(Color::Yellow),
+                            style::SetForegroundColor(Color::Black),
+                            style::Print(format!("  {}  ", value))
+                        );
+                    }
+                    Cell::Gray(value) => {
+                        queue!(
+                            io::stdout(),
+                            style::SetBackgroundColor(Color::Grey),
+                            style::SetForegroundColor(Color::Black),
+                            style::Print(format!("  {}  ", value))
+                        );
+                    }
+                    Cell::Empty => {
+                        queue!(
+                            io::stdout(),
+                            style::SetBackgroundColor(Color::DarkGrey),
+                            style::Print("     ")
+                        );
+                    }
+                }
+            }
+        }
+        queue!(io::stdout(), style::ResetColor);
+
+        // END CODE
+        io::stdout().flush();
+        terminal::disable_raw_mode();
+    }
 }
 
 impl fmt::Debug for Board {
@@ -127,7 +189,7 @@ fn main() {
     let mut board = Board::new("rusty".to_string());
     loop {
         let mut input = String::new();
-        print!("Make a guess: ");
+        print!("\nMake a guess: ");
         io::stdout().flush();
         io::stdin()
             .read_line(&mut input)
@@ -137,14 +199,7 @@ fn main() {
             println!("{} is not in the dictionary!", &input.trim());
         } else {
             board.guess(&input);
-            terminal::enable_raw_mode(); // check for error
-            queue!(
-                io::stdout(),
-                style::ResetColor,
-                terminal::Clear(ClearType::All),
-                cursor::Hide,
-                cursor::MoveTo(1, 1)
-            );
+            board.print();
         }
     }
 }
@@ -166,6 +221,22 @@ mod tests {
                 Cell::Green('s'),
                 Cell::Green('t'),
                 Cell::Green('y')
+            ]
+        );
+    }
+
+    #[test]
+    fn fail_case() {
+        let mut board = Board::new("rusty".to_string());
+        board.guess("tests");
+        assert_eq!(
+            board.rows[0],
+            [
+                Cell::Gray('t'),
+                Cell::Gray('e'),
+                Cell::Green('s'),
+                Cell::Green('t'),
+                Cell::Gray('s')
             ]
         );
     }
