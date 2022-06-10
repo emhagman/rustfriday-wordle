@@ -6,6 +6,7 @@ use std::fmt;
 use std::io::{self, Write};
 
 use dictionary::Dictionary;
+use httpserver::HttpServer;
 
 use crossterm::{
     cursor,
@@ -187,6 +188,13 @@ impl fmt::Debug for Board {
 
 fn main() {
     let mut board = Board::new("rusty".to_string());
+    // let mut server = HttpServer::new();
+    // server.post("/guess", &|req| {
+    //     // let guess = req.body.q;
+    //     // board.guess(guess);
+    //     return "ABC".to_string();
+    // });
+    // server.listen();
     loop {
         let mut input = String::new();
         print!("\nMake a guess: ");
