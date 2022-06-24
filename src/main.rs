@@ -1,12 +1,14 @@
 mod dictionary;
 mod utils;
 
+use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt;
 use std::io::{self, Write};
 
 use dictionary::Dictionary;
 use httpserver::HttpServer;
+use reqwest::header;
 
 use crossterm::{
     cursor,
@@ -97,11 +99,7 @@ impl Board {
 
     // self, &self, mut self, &mut self
     pub fn guess(&mut self, guess: &str) {
-        let index = self
-            .rows
-            .iter()
-            .position(|&r| r[0] == Cell::Empty)
-            .expect("You lose!");
+        let index = self.rows.iter().position(|&r| r[0] == Cell::Empty).expect("You lose!");
         let guess = guess.trim();
         if guess.len() > 5 {
             panic!("can't guess more than 5")
@@ -186,30 +184,64 @@ impl fmt::Debug for Board {
     }
 }
 
-fn main() {
-    let mut board = Board::new("rusty".to_string());
-    // let mut server = HttpServer::new();
-    // server.post("/guess", &|req| {
-    //     // let guess = req.body.q;
-    //     // board.guess(guess);
-    //     return "ABC".to_string();
-    // });
-    // server.listen();
-    loop {
-        let mut input = String::new();
-        print!("\nMake a guess: ");
-        io::stdout().flush();
-        io::stdin()
-            .read_line(&mut input)
-            .expect("failed to read guess");
+fn send_slack_message_to_channel(channel: &str, message: &str) {
+    let mut map = HashMap::new();
+    map.insert("channel", channel);
+    map.insert("text", message);
+    let mut headers = header::HeaderMap::new();
+    // headers.insert(
+    //     header::AUTHORIZATION,
+    //     header::HeaderValue::from_static("Bearer OUR_TOKEN_HERE"),
+    // );
+    let client = reqwest::blocking::Client::builder()
+        .default_headers(headers)
+        .build()
+        .unwrap();
+    let res = client.post("https://slack.com/api/chat.postMessage").json(&map).send();
+}
 
-        if !board.dictionary.is_a_word(&input) {
-            println!("{} is not in the dictionary!", &input.trim());
-        } else {
-            board.guess(&input);
-            board.print();
+fn main() {
+    // let mut board = Board::new("rusty".to_string());
+    let mut server = HttpServer::new();
+    server.get("/", &|req| {
+        return "health_check".to_string();
+    });
+    server.post("/events", &|req| {
+        // parse the json body
+        let raw_body = req.body.as_ref().unwrap();
+        let v: Value = serde_json::from_str(&raw_body).expect("Can't parse JSON");
+
+        // don't respond if the bot posted the message
+        if v["event"]["user"] == "U03M2JWUMDY" {
+            return "NO_MESSAGE".to_string();
         }
-    }
+
+        // response to text
+        if v["event"]["text"] != "" {
+            // TODO: add checks for type of command here
+            send_slack_message_to_channel("rust-wordle-bot", "Want to start a game? Type `play`");
+        }
+
+        // return the challenge response if needed
+        return v["challenge"].to_string();
+    });
+    server.listen();
+
+    // loop {
+    //     let mut input = String::new();
+    //     print!("\nMake a guess: ");
+    //     io::stdout().flush();
+    //     io::stdin()
+    //         .read_line(&mut input)
+    //         .expect("failed to read guess");
+
+    //     if !board.dictionary.is_a_word(&input) {
+    //         println!("{} is not in the dictionary!", &input.trim());
+    //     } else {
+    //         board.guess(&input);
+    //         board.print();
+    //     }
+    // }
 }
 
 #[cfg(test)]
