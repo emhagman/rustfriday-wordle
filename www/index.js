@@ -1,3 +1,3 @@
 import * as wasm from "wordle";
 
-wasm.greet();
+// wasm.greet();
