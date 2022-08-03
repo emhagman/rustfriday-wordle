@@ -1,266 +1,27 @@
+mod board;
 mod dictionary;
 mod utils;
 
 #[macro_use]
 extern crate lazy_static;
 
-use serde_json::Value;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::fmt;
-use std::io::{self, Write};
-use std::sync::{Arc, Mutex};
-
-use dictionary::Dictionary;
+use crate::board::Board;
 use httpserver::HttpServer;
-use reqwest::header;
-
-use crossterm::{
-    cursor, queue, style,
-    style::Color,
-    terminal::{self, ClearType},
+use serde_json::Value;
+use std::{
+    io::{self, Error, Write},
+    sync::Mutex,
 };
-
-struct Board {
-    word: String,
-    word_count: HashMap<char, i32>,
-    rows: [[Cell; 5]; 6],
-    dictionary: dictionary::Dictionary,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum Cell {
-    Green(char),
-    Yellow(char),
-    Gray(char),
-    Empty,
-}
-
-impl Cell {
-    pub fn new() -> Self {
-        Cell::Empty
-    }
-}
-
-fn count_chars(a: &str) -> HashMap<char, i32> {
-    let mut count: HashMap<char, i32> = HashMap::new(); // {'a': 0}
-    for letter in a.chars() {
-        let letter_count = count.entry(letter).or_insert(0);
-        *letter_count += 1;
-    }
-    count
-}
-
-impl Board {
-    // self, &self, &mut self
-    pub fn new(word: String) -> Self {
-        let word_count = count_chars(&word);
-        Board {
-            word: word,
-            word_count: word_count,
-            rows: [[Cell::new(); 5]; 6],
-            dictionary: Dictionary::new("./data/dictionary.txt"),
-        }
-    }
-
-    fn mark_green(&mut self, index: usize, guess: &str) {
-        let chars = guess.chars();
-        for (guess_idx, c) in chars.enumerate() {
-            for (word_idx, letter) in self.word.chars().enumerate() {
-                let count = self.word_count.get_mut(&letter).unwrap();
-                if guess_idx == word_idx && c == letter {
-                    *count -= 1;
-                    self.rows[index][guess_idx] = Cell::Green(letter);
-                }
-            }
-        }
-    }
-
-    fn mark_yellow(&mut self, index: usize, guess: &str) {
-        let chars = guess.chars();
-        for (guess_idx, c) in chars.enumerate() {
-            for (word_idx, letter) in self.word.chars().enumerate() {
-                let count = self.word_count.get_mut(&letter).unwrap();
-                if *count > 0 && guess_idx != word_idx && c == letter {
-                    *count -= 1;
-                    self.rows[index][guess_idx] = Cell::Yellow(letter);
-                }
-            }
-        }
-    }
-
-    fn mark_gray(&mut self, index: usize, guess: &str) {
-        let chars = guess.chars();
-        for (guess_idx, c) in chars.enumerate() {
-            let cell = self.rows[index][guess_idx];
-            if cell == Cell::Empty {
-                self.rows[index][guess_idx] = Cell::Gray(c);
-            }
-        }
-    }
-
-    // self, &self, mut self, &mut self
-    pub fn guess(&mut self, guess: &str) {
-        let index = self.rows.iter().position(|&r| r[0] == Cell::Empty).expect("You lose!");
-        let guess = guess.trim();
-        if guess.len() > 5 {
-            panic!("can't guess more than 5")
-        }
-        self.word_count = count_chars(&self.word);
-        self.mark_green(index, guess);
-        self.mark_yellow(index, guess);
-        self.mark_gray(index, guess);
-    }
-
-    pub fn has_won(&self) -> bool {
-        // Check each row
-        // Make sure every cell is green and has the right letter
-        // Return true if any row matches that
-        return self.rows.iter().any(|&r| {
-            return r.iter().all(|c| {
-                let is_green_cell = match c {
-                    Cell::Green(_) => true,
-                    _ => false,
-                };
-                return is_green_cell;
-            });
-        });
-    }
-
-    pub fn slack(&self) -> String {
-        let mut response = "".to_string();
-        for (idx, r) in self.rows.iter().enumerate() {
-            for c in r {
-                match c {
-                    Cell::Green(value) | Cell::Yellow(value) | Cell::Gray(value) => {
-                        response.push_str(&format!("   {}", value).to_uppercase());
-                    }
-                    Cell::Empty => {}
-                }
-            }
-            response.push_str("\n");
-            for c in r {
-                match c {
-                    Cell::Green(value) => {
-                        response.push_str("🟩 ");
-                    }
-                    Cell::Yellow(value) => {
-                        response.push_str("🟨 ");
-                    }
-                    Cell::Gray(value) => {
-                        response.push_str("⬜️ ");
-                    }
-                    Cell::Empty => {
-                        response.push_str("⬛️ ");
-                    }
-                }
-            }
-            response.push_str("\n");
-        }
-        return response;
-    }
-
-    pub fn print(&self) {
-        terminal::enable_raw_mode(); // check for error
-        queue!(
-            io::stdout(),
-            style::ResetColor,
-            terminal::Clear(ClearType::All),
-            cursor::Hide,
-            cursor::MoveTo(0, 0)
-        );
-
-        // INSERT CODE HERE
-        for (idx, r) in self.rows.iter().enumerate() {
-            queue!(
-                io::stdout(),
-                style::ResetColor,
-                cursor::Hide,
-                cursor::MoveTo(0, idx.try_into().unwrap())
-            );
-            for c in r {
-                match c {
-                    Cell::Green(value) => {
-                        queue!(
-                            io::stdout(),
-                            style::SetBackgroundColor(Color::Green),
-                            style::SetForegroundColor(Color::Black),
-                            style::Print(format!("  {}  ", value))
-                        );
-                    }
-                    Cell::Yellow(value) => {
-                        queue!(
-                            io::stdout(),
-                            style::SetBackgroundColor(Color::Yellow),
-                            style::SetForegroundColor(Color::Black),
-                            style::Print(format!("  {}  ", value))
-                        );
-                    }
-                    Cell::Gray(value) => {
-                        queue!(
-                            io::stdout(),
-                            style::SetBackgroundColor(Color::Grey),
-                            style::SetForegroundColor(Color::Black),
-                            style::Print(format!("  {}  ", value))
-                        );
-                    }
-                    Cell::Empty => {
-                        queue!(
-                            io::stdout(),
-                            style::SetBackgroundColor(Color::DarkGrey),
-                            style::Print("     ")
-                        );
-                    }
-                }
-            }
-        }
-        queue!(io::stdout(), style::ResetColor);
-
-        // END CODE
-        io::stdout().flush();
-        terminal::disable_raw_mode();
-    }
-}
-
-impl fmt::Debug for Board {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for r in &self.rows {
-            for c in r {
-                write!(f, "{:?} | ", c);
-            }
-            write!(f, "\n");
-        }
-        Ok(())
-    }
-}
-
-fn send_slack_message_to_channel(channel: &str, message: &str) {
-    let mut map = HashMap::new();
-    map.insert("channel", channel);
-    map.insert("text", message);
-    let mut headers = header::HeaderMap::new();
-    headers.insert(
-        header::AUTHORIZATION,
-        header::HeaderValue::from_static("Bearer xoxb-11396693347-3716642973474-SJeinCCLQXAX8wV5z1alPh9X"),
-    );
-    let client = reqwest::blocking::Client::builder()
-        .default_headers(headers)
-        .build()
-        .unwrap();
-    let res = client.post("https://slack.com/api/chat.postMessage").json(&map).send();
-}
 
 lazy_static! {
     static ref BOARD: Mutex<Board> = Mutex::new(Board::new("rusty".to_string()));
 }
 
-fn main() {
+fn slack() {
     let mut server = HttpServer::new();
-
     server.get("/", &|req| {
         return "health_check".to_string();
     });
-
     server.post("/events", &|req| {
         let mut board = BOARD.lock().unwrap();
 
@@ -281,14 +42,14 @@ fn main() {
                 return "".to_string();
             }
             if !board.dictionary.is_a_word(trimmed_input) {
-                send_slack_message_to_channel(
+                utils::send_slack_message_to_channel(
                     "rust-wordle-bot",
                     &format!("{} is not in the dictionary!", trimmed_input.trim()),
                 );
             } else {
                 board.guess(trimmed_input);
-                board.print();
-                send_slack_message_to_channel("rust-wordle-bot", &board.slack());
+                board.print().expect("Failed to print board to terminal");
+                utils::send_slack_message_to_channel("rust-wordle-bot", &board.slack());
             }
             // // TODO: add checks for type of command here
         }
@@ -297,175 +58,25 @@ fn main() {
         return v["challenge"].to_string();
     });
     server.listen();
-
-    // loop {
-    //     let mut input = String::new();
-    //     print!("\nMake a guess: ");
-    //     io::stdout().flush();
-    //     io::stdin()
-    //         .read_line(&mut input)
-    //         .expect("failed to read guess");
-
-    //     if !board.dictionary.is_a_word(&input) {
-    //         println!("{} is not in the dictionary!", &input.trim());
-    //     } else {
-    //         board.guess(&input);
-    //         board.print();
-    //     }
-    // }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::Board;
-    use crate::Cell;
-
-    #[test]
-    fn green() {
-        let mut board = Board::new("rusty".to_string());
-        board.guess("rusty");
-        assert_eq!(
-            board.rows[0],
-            [
-                Cell::Green('r'),
-                Cell::Green('u'),
-                Cell::Green('s'),
-                Cell::Green('t'),
-                Cell::Green('y')
-            ]
-        );
+fn terminal() -> Result<(), Error> {
+    loop {
+        let mut input = String::new();
+        print!("\nMake a guess: ");
+        io::stdout().flush()?;
+        io::stdin().read_line(&mut input).expect("failed to read guess");
+        let mut board = BOARD.lock().unwrap();
+        if !board.dictionary.is_a_word(&input) {
+            println!("{} is not in the dictionary!", &input.trim());
+        } else {
+            board.guess(&input);
+            board.print()?;
+        }
     }
+}
 
-    #[test]
-    fn fail_case() {
-        let mut board = Board::new("rusty".to_string());
-        board.guess("tests");
-        assert_eq!(
-            board.rows[0],
-            [
-                Cell::Gray('t'),
-                Cell::Gray('e'),
-                Cell::Green('s'),
-                Cell::Green('t'),
-                Cell::Gray('s')
-            ]
-        );
-    }
-
-    #[test]
-    fn yellow() {
-        let mut board = Board::new("rusty".to_string());
-        board.guess("rutsy");
-        assert_eq!(
-            board.rows[0],
-            [
-                Cell::Green('r'),
-                Cell::Green('u'),
-                Cell::Yellow('t'),
-                Cell::Yellow('s'),
-                Cell::Green('y')
-            ]
-        );
-    }
-
-    #[test]
-    fn gray() {
-        let mut board = Board::new("rusty".to_string());
-        board.guess("abcde");
-        assert_eq!(
-            board.rows[0],
-            [
-                Cell::Gray('a'),
-                Cell::Gray('b'),
-                Cell::Gray('c'),
-                Cell::Gray('d'),
-                Cell::Gray('e')
-            ]
-        );
-    }
-
-    #[test]
-    fn already_used_green() {
-        let mut board = Board::new("rusty".to_string());
-        board.guess("ruuty");
-        assert_eq!(
-            board.rows[0],
-            [
-                Cell::Green('r'),
-                Cell::Green('u'),
-                Cell::Gray('u'),
-                Cell::Green('t'),
-                Cell::Green('y')
-            ]
-        );
-    }
-
-    #[test]
-    fn already_used_green_first() {
-        let mut board = Board::new("rusty".to_string());
-        board.guess("uusty");
-        assert_eq!(
-            board.rows[0],
-            [
-                Cell::Gray('u'),
-                Cell::Green('u'),
-                Cell::Green('s'),
-                Cell::Green('t'),
-                Cell::Green('y')
-            ]
-        );
-    }
-
-    #[test]
-    fn guess_the_same_thing() {
-        let mut board = Board::new("rusty".to_string());
-        board.guess("rutsy");
-        board.guess("rutsy");
-        assert_eq!(
-            board.rows[0],
-            [
-                Cell::Green('r'),
-                Cell::Green('u'),
-                Cell::Yellow('t'),
-                Cell::Yellow('s'),
-                Cell::Green('y')
-            ]
-        );
-        assert_eq!(
-            board.rows[1],
-            [
-                Cell::Green('r'),
-                Cell::Green('u'),
-                Cell::Yellow('t'),
-                Cell::Yellow('s'),
-                Cell::Green('y')
-            ]
-        );
-    }
-
-    #[test]
-    fn has_won() {
-        let mut board = Board::new("rusty".to_string());
-        board.guess("rusty");
-        assert_eq!(board.has_won(), true);
-    }
-
-    #[test]
-    fn has_won_2nd() {
-        let mut board = Board::new("rusty".to_string());
-        board.guess("rogue");
-        assert_eq!(board.has_won(), false);
-        board.guess("rusty");
-        assert_eq!(board.has_won(), true);
-    }
-
-    #[test]
-    fn has_won_multiple() {
-        let mut board = Board::new("rusty".to_string());
-        board.guess("rogue");
-        assert_eq!(board.has_won(), false);
-        board.guess("rusty");
-        board.guess("rusty");
-        assert_eq!(board.has_won(), true);
-    }
+fn main() {
+    slack();
+    // terminal().expect("Failed to run terminal loop");
 }

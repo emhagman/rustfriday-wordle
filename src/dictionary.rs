@@ -10,7 +10,6 @@ impl Dictionary {
     pub fn new(filename: &str) -> Self {
         let mut words = HashMap::new();
         let lines = utils::read_lines(filename).expect("cant read text file");
-        // Consumes the iterator, returns an (Optional) String
         for line in lines {
             if let Ok(word) = line {
                 words.insert(word, true);
