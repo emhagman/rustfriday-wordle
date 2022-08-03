@@ -77,6 +77,6 @@ fn terminal() -> Result<(), Error> {
 }
 
 fn main() {
-    slack();
+    // slack();
     // terminal().expect("Failed to run terminal loop");
 }
