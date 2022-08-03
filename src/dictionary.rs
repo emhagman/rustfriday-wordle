@@ -19,6 +19,7 @@ impl Dictionary {
         Dictionary { words: words }
     }
     pub fn is_a_word(&self, a: &str) -> bool {
+        println!("{}", a);
         let clean = a.trim().to_uppercase();
         let value = &self.words.contains_key(&clean);
         value.clone()

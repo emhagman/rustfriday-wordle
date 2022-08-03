@@ -1,22 +1,24 @@
 mod dictionary;
 mod utils;
 
+#[macro_use]
+extern crate lazy_static;
+
 use serde_json::Value;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::io::{self, Write};
+use std::sync::{Arc, Mutex};
 
 use dictionary::Dictionary;
 use httpserver::HttpServer;
 use reqwest::header;
 
 use crossterm::{
-    cursor,
-    event::{self, Event, KeyCode, KeyEvent},
-    execute, queue, style,
+    cursor, queue, style,
     style::Color,
     terminal::{self, ClearType},
-    Command, Result,
 };
 
 struct Board {
@@ -110,6 +112,54 @@ impl Board {
         self.mark_gray(index, guess);
     }
 
+    pub fn has_won(&self) -> bool {
+        // Check each row
+        // Make sure every cell is green and has the right letter
+        // Return true if any row matches that
+        return self.rows.iter().any(|&r| {
+            return r.iter().all(|c| {
+                let is_green_cell = match c {
+                    Cell::Green(_) => true,
+                    _ => false,
+                };
+                return is_green_cell;
+            });
+        });
+    }
+
+    pub fn slack(&self) -> String {
+        let mut response = "".to_string();
+        for (idx, r) in self.rows.iter().enumerate() {
+            for c in r {
+                match c {
+                    Cell::Green(value) | Cell::Yellow(value) | Cell::Gray(value) => {
+                        response.push_str(&format!("   {}", value).to_uppercase());
+                    }
+                    Cell::Empty => {}
+                }
+            }
+            response.push_str("\n");
+            for c in r {
+                match c {
+                    Cell::Green(value) => {
+                        response.push_str("🟩 ");
+                    }
+                    Cell::Yellow(value) => {
+                        response.push_str("🟨 ");
+                    }
+                    Cell::Gray(value) => {
+                        response.push_str("⬜️ ");
+                    }
+                    Cell::Empty => {
+                        response.push_str("⬛️ ");
+                    }
+                }
+            }
+            response.push_str("\n");
+        }
+        return response;
+    }
+
     pub fn print(&self) {
         terminal::enable_raw_mode(); // check for error
         queue!(
@@ -189,10 +239,10 @@ fn send_slack_message_to_channel(channel: &str, message: &str) {
     map.insert("channel", channel);
     map.insert("text", message);
     let mut headers = header::HeaderMap::new();
-    // headers.insert(
-    //     header::AUTHORIZATION,
-    //     header::HeaderValue::from_static("Bearer OUR_TOKEN_HERE"),
-    // );
+    headers.insert(
+        header::AUTHORIZATION,
+        header::HeaderValue::from_static("Bearer xoxb-11396693347-3716642973474-SJeinCCLQXAX8wV5z1alPh9X"),
+    );
     let client = reqwest::blocking::Client::builder()
         .default_headers(headers)
         .build()
@@ -200,13 +250,20 @@ fn send_slack_message_to_channel(channel: &str, message: &str) {
     let res = client.post("https://slack.com/api/chat.postMessage").json(&map).send();
 }
 
+lazy_static! {
+    static ref BOARD: Mutex<Board> = Mutex::new(Board::new("rusty".to_string()));
+}
+
 fn main() {
-    // let mut board = Board::new("rusty".to_string());
     let mut server = HttpServer::new();
+
     server.get("/", &|req| {
         return "health_check".to_string();
     });
+
     server.post("/events", &|req| {
+        let mut board = BOARD.lock().unwrap();
+
         // parse the json body
         let raw_body = req.body.as_ref().unwrap();
         let v: Value = serde_json::from_str(&raw_body).expect("Can't parse JSON");
@@ -217,9 +274,23 @@ fn main() {
         }
 
         // response to text
-        if v["event"]["text"] != "" {
-            // TODO: add checks for type of command here
-            send_slack_message_to_channel("rust-wordle-bot", "Want to start a game? Type `play`");
+        let input = v["event"]["text"].to_string();
+        let trimmed_input = input.trim_matches('"');
+        if input != "" {
+            if input == "null" {
+                return "".to_string();
+            }
+            if !board.dictionary.is_a_word(trimmed_input) {
+                send_slack_message_to_channel(
+                    "rust-wordle-bot",
+                    &format!("{} is not in the dictionary!", trimmed_input.trim()),
+                );
+            } else {
+                board.guess(trimmed_input);
+                board.print();
+                send_slack_message_to_channel("rust-wordle-bot", &board.slack());
+            }
+            // // TODO: add checks for type of command here
         }
 
         // return the challenge response if needed
@@ -370,5 +441,31 @@ mod tests {
                 Cell::Green('y')
             ]
         );
+    }
+
+    #[test]
+    fn has_won() {
+        let mut board = Board::new("rusty".to_string());
+        board.guess("rusty");
+        assert_eq!(board.has_won(), true);
+    }
+
+    #[test]
+    fn has_won_2nd() {
+        let mut board = Board::new("rusty".to_string());
+        board.guess("rogue");
+        assert_eq!(board.has_won(), false);
+        board.guess("rusty");
+        assert_eq!(board.has_won(), true);
+    }
+
+    #[test]
+    fn has_won_multiple() {
+        let mut board = Board::new("rusty".to_string());
+        board.guess("rogue");
+        assert_eq!(board.has_won(), false);
+        board.guess("rusty");
+        board.guess("rusty");
+        assert_eq!(board.has_won(), true);
     }
 }
