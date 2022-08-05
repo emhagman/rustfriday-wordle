@@ -1,5 +1,6 @@
 mod board;
 mod dictionary;
+mod slack;
 mod utils;
 
 #[macro_use]
@@ -42,18 +43,17 @@ fn slack() {
                 return "".to_string();
             }
             if !board.dictionary.is_a_word(trimmed_input) {
-                utils::send_slack_message_to_channel(
+                slack::send_slack_message_to_channel(
                     "rust-wordle-bot",
                     &format!("{} is not in the dictionary!", trimmed_input.trim()),
                 );
             } else {
                 board.guess(trimmed_input);
                 board.print().expect("Failed to print board to terminal");
-                utils::send_slack_message_to_channel("rust-wordle-bot", &board.slack());
+                slack::send_slack_message_to_channel("rust-wordle-bot", &board.slack());
             }
-            // // TODO: add checks for type of command here
+            // TODO: add checks for type of command here
         }
-
         // return the challenge response if needed
         return v["challenge"].to_string();
     });

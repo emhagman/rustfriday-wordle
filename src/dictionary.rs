@@ -2,11 +2,15 @@ use crate::utils;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
-pub struct Dictionary {
+pub struct ComputerDictionary {
     words: HashMap<String, bool>,
 }
 
-impl Dictionary {
+pub trait DictionaryLike {
+    fn is_a_word(&self, word: &str) -> bool;
+}
+
+impl ComputerDictionary {
     pub fn new(filename: &str) -> Self {
         let mut words = HashMap::new();
         let lines = utils::read_lines(filename).expect("cant read text file");
@@ -15,17 +19,37 @@ impl Dictionary {
                 words.insert(word, true);
             }
         }
-        Dictionary { words: words }
-    }
-    pub fn is_a_word(&self, a: &str) -> bool {
-        println!("{}", a);
-        let clean = a.trim().to_uppercase();
-        let value = &self.words.contains_key(&clean);
-        value.clone()
+        ComputerDictionary { words: HashMap::new() }
     }
     pub fn list(&self) {
         for w in &self.words {
             println!("{}", w.0);
         }
+    }
+}
+
+impl DictionaryLike for ComputerDictionary {
+    fn is_a_word(&self, a: &str) -> bool {
+        println!("{}", a);
+        let clean = a.trim().to_uppercase();
+        let value = &self.words.contains_key(&clean);
+        value.clone()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WebDictionary {
+    words: HashMap<String, bool>,
+}
+
+impl WebDictionary {
+    pub fn new() -> Self {
+        WebDictionary { words: HashMap::new() }
+    }
+}
+
+impl DictionaryLike for WebDictionary {
+    fn is_a_word(&self, a: &str) -> bool {
+        true
     }
 }

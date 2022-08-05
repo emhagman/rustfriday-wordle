@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::fmt;
 use std::io::{self, Error, Write};
 
-use crate::dictionary::Dictionary;
+use crate::dictionary::{ComputerDictionary, DictionaryLike, WebDictionary};
+
+#[cfg(not(target_arch = "wasm32"))]
 use crossterm::{
     cursor, queue, style,
     style::Color,
@@ -12,8 +14,8 @@ use crossterm::{
 pub struct Board {
     word: String,
     word_count: HashMap<char, i32>,
-    rows: [[Cell; 5]; 6],
-    pub dictionary: Dictionary,
+    pub rows: [[Cell; 5]; 6],
+    pub dictionary: Box<dyn DictionaryLike + Send>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -22,6 +24,17 @@ pub enum Cell {
     Yellow(char),
     Gray(char),
     Empty,
+}
+
+impl fmt::Display for Cell {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            &Cell::Gray(v) => write!(f, "{}", v),
+            &Cell::Yellow(v) => write!(f, "{}", v),
+            &Cell::Green(v) => write!(f, "{}", v),
+            &Cell::Empty => write!(f, "{}", ""),
+        }
+    }
 }
 
 impl Cell {
@@ -47,7 +60,17 @@ impl Board {
             word: word,
             word_count: word_count,
             rows: [[Cell::new(); 5]; 6],
-            dictionary: Dictionary::new("./data/dictionary.txt"),
+            dictionary: Box::new(ComputerDictionary::new("./data/dictionary.txt")),
+        }
+    }
+
+    pub fn new_wasm(word: String) -> Self {
+        let word_count = count_chars(&word);
+        Board {
+            word: word,
+            word_count: word_count,
+            rows: [[Cell::new(); 5]; 6],
+            dictionary: Box::new(WebDictionary::new()),
         }
     }
 
@@ -148,6 +171,8 @@ impl Board {
         return response;
     }
 
+    // TODO: use a trait here instead
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn print(&self) -> Result<(), Error> {
         terminal::enable_raw_mode().expect("Failed to enter raw mode");
         queue!(
