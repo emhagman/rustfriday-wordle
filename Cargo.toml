@@ -9,9 +9,13 @@ wasm-bindgen = "0.2.82"
 [dependencies.web-sys]
 version = "0.3.4"
 features = [
+  'console',
   'Document',
   'Element',
+  'Event',
   'HtmlElement',
+  'HtmlInputElement',
+  'EventListener',
   'Node',
   'Window',
 ]
@@ -26,8 +30,8 @@ serde_json = "1.0.81"
 path = "../httpserver"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-console_error_panic_hook = { version = "0.1.6", optional = true }
-wee_alloc = { version = "0.4.5", optional = true }
+console_error_panic_hook = { version = "0.1.6" }
+wee_alloc = { version = "0.4.5" }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3.13"
