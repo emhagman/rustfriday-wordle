@@ -3,6 +3,7 @@ use std::fmt;
 use std::io::{self, Error, Write};
 
 use crate::dictionary::{ComputerDictionary, DictionaryLike, WebDictionary};
+use crate::traits::WebComponent;
 
 #[cfg(not(target_arch = "wasm32"))]
 use crossterm::{
@@ -10,6 +11,7 @@ use crossterm::{
     style::Color,
     terminal::{self, ClearType},
 };
+use wasm_bindgen::JsValue;
 
 pub struct Board {
     word: String,
@@ -43,6 +45,21 @@ impl Cell {
     }
 }
 
+impl WebComponent for Cell {
+    fn to_dom(&self, document: &web_sys::Document) -> Result<web_sys::Element, JsValue> {
+        let cell_style = "display: flex; align-items: center; justify-content: center; font-size: 24px; margin: 4px; width: 50px; height: 50px; padding: 4px; border: 2px solid #d3d6da;";
+        let cell_div: web_sys::Element = document.create_element("div")?;
+        match *&self {
+            Cell::Gray(_) => cell_div.set_attribute("style", &format!("{} background-color: #86888a;", cell_style)),
+            Cell::Green(_) => cell_div.set_attribute("style", &format!("{} background-color: #6aaa64;", cell_style)),
+            Cell::Yellow(_) => cell_div.set_attribute("style", &format!("{} background-color: #c9b458;", cell_style)),
+            Cell::Empty => cell_div.set_attribute("style", cell_style),
+        }?;
+        cell_div.set_text_content(Some(&format!("{}", &self)));
+        Ok(cell_div)
+    }
+}
+
 fn count_chars(a: &str) -> HashMap<char, i32> {
     let mut count: HashMap<char, i32> = HashMap::new(); // {'a': 0}
     for letter in a.chars() {
@@ -50,6 +67,27 @@ fn count_chars(a: &str) -> HashMap<char, i32> {
         *letter_count += 1;
     }
     count
+}
+
+impl WebComponent for Board {
+    fn to_dom(&self, document: &web_sys::Document) -> Result<web_sys::Element, JsValue> {
+        let container: web_sys::Element = document.create_element("div")?;
+        container.set_attribute(
+            "style",
+            "display: flex; flex-direction: column; align-items: flex-start",
+        )?;
+        for row in self.rows.iter() {
+            // Each row
+            let row_div: web_sys::Element = document.create_element("div")?;
+            row_div.set_attribute("style", "display: flex; flex-direction: row; flex-shrink: 1")?;
+            for cell in row.iter() {
+                let cell_div = cell.to_dom(document)?;
+                row_div.append_child(&cell_div)?;
+            }
+            container.append_child(&row_div)?;
+        }
+        Ok(container)
+    }
 }
 
 impl Board {
